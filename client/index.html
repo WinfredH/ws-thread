@@ -7,27 +7,74 @@
     <h2 id="status"></h2>
     <label for="length">message length:</label><input id="length" type="text" value="1048576">
     <button id="send">send ws msg</button>
+    <br>
+    <label for="count">task count:</label><input type="text" id="count" value="60">
+    <button id="test">pressure test</button>
+    <br>
+    <label for="progress">test progress:</label><progress id="progress" value="0"></progress>
+    <br>
+    <p>last test duration: <input id="duration" disabled value="0">ms</p>
     <script src="./command.js"></script>
     <script>
         const worker = new Worker('./worker.js')
-        worker.onmessage = function (e) {
-            if (e.data instanceof SharedArrayBuffer) {
-                const uint8 = new Uint8Array(e.data)
-                if (uint8[0] === COMMAND.RECEIVE) {
-                    console.log('[from worker]', uint8.slice(1))
+        const progress = document.getElementById('progress')
+        const duration = document.getElementById('duration')
+
+        function assertReceive(value, buffer) {
+            const uint8 = new Uint8Array(buffer)
+            return uint8[0] === COMMAND.RECEIVE ? uint8.slice(1).every((item) => item === value) : false
+        }
+
+        function task(length) {
+            return new Promise((resolve, reject) => {
+                try {
+                    const sab = new SharedArrayBuffer(length + 1)
+                    const uint8 = new Uint8Array(sab)
+                    const content = Math.ceil(255 * Math.random())
+                    uint8.set([COMMAND.SEND, ...(new Array(length)).fill(content)])
+                    worker.addEventListener('message', (e) => {
+                        assertReceive(content, e.data) ? resolve() : reject()
+                    }, {
+                        once: true
+                    })
+                    worker.postMessage(sab)
+                } catch {
+                    reject()
                 }
-            }
+            })
+        }
+
+        async function recordDuration(fn) {
+            const start = Date.now()
+            await fn()
+            duration.value = Date.now() - start
+        }
+
+        async function toggleBtn(fn) {
+            testBtn.disabled = true;
+            sendBtn.disabled = true;
+            await fn()
+            testBtn.disabled = false;
+            sendBtn.disabled = false;
         }
 
         const sendBtn = document.getElementById('send')
-        sendBtn.onclick = function() {
+        sendBtn.onclick = async function() {
+            toggleBtn(() => recordDuration(() => task(Number(document.getElementById('length').value))))
+            
+        }
+
+        const testBtn = document.getElementById('test')
+        testBtn.onclick = async function() {
             const length = Number(document.getElementById('length').value)
-            const sab = new SharedArrayBuffer(length + 1)
-            const uint8 = new Uint8Array(sab)
-            const content = Math.ceil(255 * Math.random())
-            uint8.set([COMMAND.SEND, ...(new Array(length)).fill(content)])
-            worker.postMessage(sab)
-            console.log('[main]', content)
+            const count = Number(document.getElementById('count').value)
+            progress.max = count
+            toggleBtn(() => recordDuration(async () => {
+                for (let i = 0; i < count; i++) {
+                    await task(length)
+                    progress.value = 1 + i
+                }
+            }))
         }
     </script>
 </body>
