@@ -1,31 +1,76 @@
 <!DOCTYPE html>
 <head>
     <title>ws thread</title>
+    <style>
+        #workerAndSab, #default {
+            border: 1px solid #000;
+            padding: 8px;
+            margin-bottom: 8px;
+        }
+    </style>
 </head>
 <body>
     <h1>WebSocket Thread</h1>
     <h2 id="status"></h2>
-    <label for="length">message length:</label><input id="length" type="text" value="1048576">
-    <button id="send">send ws msg</button>
-    <br>
-    <label for="count">task count:</label><input type="text" id="count" value="60">
-    <button id="test">pressure test</button>
-    <br>
-    <label for="progress">test progress:</label><progress id="progress" value="0"></progress>
-    <br>
-    <p>last test duration: <input id="duration" disabled value="0">ms</p>
+    <div id="workerAndSab" >
+        <h3>Use WebSocket in Worker Thread</h2>
+        <label for="length1">msg length:</label><input id="length1" type="text" value="1048576">
+        <button id="send1">send ws msg</button>
+        <br>
+        <label for="count1">task count:</label><input type="text" id="count1" value="60">
+        <button id="test1">pressure test</button>
+        <br>
+        <label for="progress1">test progress:</label><progress id="progress1" value="0"></progress>
+        <br>
+        <p>last test duration: <input id="duration1" disabled value="0">ms</p>
+    </div>
+    <div id="default">
+        <h3>Use WebSocket in Main Thread</h2>
+        <label for="length2">msg length:</label><input id="length2" type="text" value="1048576">
+        <button id="send2">send ws msg</button>
+        <br>
+        <label for="count2">task count:</label><input type="text" id="count2" value="60">
+        <button id="test2">pressure test</button>
+        <br>
+        <label for="progress2">test progress:</label><progress id="progress2" value="0"></progress>
+        <br>
+        <p>last test duration: <input id="duration2" disabled value="0">ms</p>
+    </div>
     <script src="./command.js"></script>
     <script>
-        const worker = new Worker('./worker.js')
-        const progress = document.getElementById('progress')
-        const duration = document.getElementById('duration')
+        const progress1 = document.getElementById('progress1')
+        const duration1 = document.getElementById('duration1')
+        const sendBtn1 = document.getElementById('send1')
+        const testBtn1 = document.getElementById('test1')
+        const progress2 = document.getElementById('progress2')
+        const duration2 = document.getElementById('duration2')
+        const sendBtn2 = document.getElementById('send2')
+        const testBtn2 = document.getElementById('test2')
 
-        function assertReceive(value, buffer) {
+        async function toggleBtn(fn) {
+            testBtn1.disabled = true;
+            sendBtn1.disabled = true;
+            testBtn2.disabled = true;
+            sendBtn2.disabled = true;
+            await fn()
+            testBtn1.disabled = false;
+            sendBtn1.disabled = false;
+            testBtn2.disabled = false;
+            sendBtn2.disabled = false;
+        }
+    </script>
+    <script>
+        const worker = new Worker('./worker.js')
+        async function recordDuration1(fn) {
+            const start = Date.now()
+            await fn()
+            duration1.value = Date.now() - start
+        }
+        function assertReceive1(value, buffer) {
             const uint8 = new Uint8Array(buffer)
             return uint8[0] === COMMAND.RECEIVE ? uint8.slice(1).every((item) => item === value) : false
         }
-
-        function task(length) {
+        function task1(length) {
             return new Promise((resolve, reject) => {
                 try {
                     const sab = new SharedArrayBuffer(length + 1)
@@ -33,7 +78,7 @@
                     const content = Math.ceil(255 * Math.random())
                     uint8.set([COMMAND.SEND, ...(new Array(length)).fill(content)])
                     worker.addEventListener('message', (e) => {
-                        assertReceive(content, e.data) ? resolve() : reject()
+                        assertReceive1(content, e.data) ? resolve() : reject()
                     }, {
                         once: true
                     })
@@ -43,36 +88,60 @@
                 }
             })
         }
-
-        async function recordDuration(fn) {
-            const start = Date.now()
-            await fn()
-            duration.value = Date.now() - start
-        }
-
-        async function toggleBtn(fn) {
-            testBtn.disabled = true;
-            sendBtn.disabled = true;
-            await fn()
-            testBtn.disabled = false;
-            sendBtn.disabled = false;
-        }
-
-        const sendBtn = document.getElementById('send')
-        sendBtn.onclick = async function() {
-            toggleBtn(() => recordDuration(() => task(Number(document.getElementById('length').value))))
+        sendBtn1.onclick = async function() {
+            toggleBtn(() => recordDuration1(() => task1(Number(document.getElementById('length1').value))))
             
         }
-
-        const testBtn = document.getElementById('test')
-        testBtn.onclick = async function() {
-            const length = Number(document.getElementById('length').value)
-            const count = Number(document.getElementById('count').value)
-            progress.max = count
-            toggleBtn(() => recordDuration(async () => {
+        testBtn1.onclick = async function() {
+            const length = Number(document.getElementById('length1').value)
+            const count = Number(document.getElementById('count1').value)
+            progress1.max = count
+            toggleBtn(() => recordDuration1(async () => {
                 for (let i = 0; i < count; i++) {
-                    await task(length)
-                    progress.value = 1 + i
+                    await task1(length)
+                    progress1.value = 1 + i
+                }
+            }))
+        }
+    </script>
+    <script>
+        const ws = new WebSocket('ws://localhost:9999?session=2')
+        async function recordDuration2(fn) {
+            const start = Date.now()
+            await fn()
+            duration2.value = Date.now() - start
+        }
+        function assertReceive2(value, buffer) {
+            const uint8 = new Uint8Array(buffer)
+            return uint8.slice(1).every((item) => item === value)
+        }
+        function task2(length) {
+            return new Promise((resolve, reject) => {
+                try {
+                    const content = Math.ceil(255 * Math.random())
+                    ws.addEventListener('message', (e) => e.data.arrayBuffer().then(
+                        buffer => assertReceive2(content, buffer) ? resolve() : reject()
+                    ), {
+                        once: true
+                    })
+                    ws.send((new Uint8Array(length)).fill(content))
+                } catch {
+                    reject()
+                }
+            })
+        }
+        sendBtn2.onclick = async function() {
+            toggleBtn(() => recordDuration2(() => task2(Number(document.getElementById('length2').value))))
+            
+        }
+        testBtn2.onclick = async function() {
+            const length = Number(document.getElementById('length2').value)
+            const count = Number(document.getElementById('count2').value)
+            progress2.max = count
+            toggleBtn(() => recordDuration2(async () => {
+                for (let i = 0; i < count; i++) {
+                    await task2(length)
+                    progress2.value = 1 + i
                 }
             }))
         }

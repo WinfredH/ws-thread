@@ -1,5 +1,5 @@
 importScripts('./command.js')
-const ws = new WebSocket('ws://localhost:9999')
+const ws = new WebSocket('ws://localhost:9999?session=1')
 
 ws.onopen = function (e) {
   postMessage({
