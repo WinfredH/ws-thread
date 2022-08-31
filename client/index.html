@@ -1,0 +1,33 @@
+<!DOCTYPE html>
+<head>
+    <title>ws thread</title>
+</head>
+<body>
+    <h1>WebSocket Thread</h1>
+    <h2 id="status"></h2>
+    <label for="length">message length:</label><input id="length" type="text" value="1048576">
+    <button id="send">send ws msg</button>
+    <script src="./command.js"></script>
+    <script>
+        const worker = new Worker('./worker.js')
+        worker.onmessage = function (e) {
+            if (e.data instanceof SharedArrayBuffer) {
+                const uint8 = new Uint8Array(e.data)
+                if (uint8[0] === COMMAND.RECEIVE) {
+                    console.log('[from worker]', uint8.slice(1))
+                }
+            }
+        }
+
+        const sendBtn = document.getElementById('send')
+        sendBtn.onclick = function() {
+            const length = Number(document.getElementById('length').value)
+            const sab = new SharedArrayBuffer(length + 1)
+            const uint8 = new Uint8Array(sab)
+            const content = Math.ceil(255 * Math.random())
+            uint8.set([COMMAND.SEND, ...(new Array(length)).fill(content)])
+            worker.postMessage(sab)
+            console.log('[main]', content)
+        }
+    </script>
+</body>

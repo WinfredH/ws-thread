@@ -1,0 +1,4 @@
+const COMMAND = {
+  RECEIVE: 0b00000000,
+  SEND: 0b00000001
+}
