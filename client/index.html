@@ -2,7 +2,7 @@
 <head>
     <title>ws thread</title>
     <style>
-        #workerAndSab, #default {
+        #workerAndSab, #default, #workerAndAb {
             border: 1px solid #000;
             padding: 8px;
             margin-bottom: 8px;
@@ -13,7 +13,7 @@
     <h1>WebSocket Thread</h1>
     <h2 id="status"></h2>
     <div id="workerAndSab" >
-        <h3>Use WebSocket in Worker Thread</h2>
+        <h3>Use WebSocket in Worker Thread with SharedArrayBuffer</h2>
         <label for="length1">msg length:</label><input id="length1" type="text" value="1048576">
         <button id="send1">send ws msg</button>
         <br>
@@ -36,6 +36,18 @@
         <br>
         <p>last test duration: <input id="duration2" disabled value="0">ms</p>
     </div>
+    <div id="workerAndAb" >
+        <h3>Use WebSocket in Worker Thread with Transferable Data</h2>
+        <label for="length3">msg length:</label><input id="length3" type="text" value="1048576">
+        <button id="send3">send ws msg</button>
+        <br>
+        <label for="count3">task count:</label><input type="text" id="count3" value="60">
+        <button id="test3">pressure test</button>
+        <br>
+        <label for="progress3">test progress:</label><progress id="progress3" value="0"></progress>
+        <br>
+        <p>last test duration: <input id="duration3" disabled value="0">ms</p>
+    </div>
     <script src="./command.js"></script>
     <script>
         const progress1 = document.getElementById('progress1')
@@ -46,21 +58,29 @@
         const duration2 = document.getElementById('duration2')
         const sendBtn2 = document.getElementById('send2')
         const testBtn2 = document.getElementById('test2')
+        const progress3 = document.getElementById('progress3')
+        const duration3 = document.getElementById('duration3')
+        const sendBtn3 = document.getElementById('send3')
+        const testBtn3 = document.getElementById('test3')
 
         async function toggleBtn(fn) {
             testBtn1.disabled = true;
             sendBtn1.disabled = true;
             testBtn2.disabled = true;
             sendBtn2.disabled = true;
+            testBtn3.disabled = true;
+            sendBtn3.disabled = true;
             await fn()
             testBtn1.disabled = false;
             sendBtn1.disabled = false;
             testBtn2.disabled = false;
             sendBtn2.disabled = false;
+            testBtn3.disabled = false;
+            sendBtn3.disabled = false;
         }
     </script>
     <script>
-        const worker = new Worker('./worker.js')
+        const worker = new Worker('./worker.sab.js')
         async function recordDuration1(fn) {
             const start = Date.now()
             await fn()
@@ -100,6 +120,51 @@
                 for (let i = 0; i < count; i++) {
                     await task1(length)
                     progress1.value = 1 + i
+                }
+            }))
+        }
+    </script>
+    <script>
+        const worker2 = new Worker('./worker.transferable.js')
+        async function recordDuration3(fn) {
+            const start = Date.now()
+            await fn()
+            duration3.value = Date.now() - start
+        }
+        function assertReceive3(value, buffer) {
+            const uint8 = new Uint8Array(buffer)
+            return uint8.every((item) => item === value)
+        }
+        function task3(length) {
+            return new Promise((resolve, reject) => {
+                try {
+                    const buffer = new ArrayBuffer(length)
+                    const uint8 = new Uint8Array(buffer)
+                    const content = Math.ceil(255 * Math.random())
+                    uint8.set((new Uint8Array(length)).fill(content))
+                    worker2.addEventListener('message', (e) => {
+                        assertReceive3(content, e.data) ? resolve() : reject()
+                    }, {
+                        once: true
+                    })
+                    worker2.postMessage(buffer, [buffer])
+                } catch {
+                    reject()
+                }
+            })
+        }
+        sendBtn3.onclick = async function() {
+            toggleBtn(() => recordDuration3(() => task3(Number(document.getElementById('length3').value))))
+            
+        }
+        testBtn3.onclick = async function() {
+            const length = Number(document.getElementById('length3').value)
+            const count = Number(document.getElementById('count3').value)
+            progress3.max = count
+            toggleBtn(() => recordDuration3(async () => {
+                for (let i = 0; i < count; i++) {
+                    await task3(length)
+                    progress3.value = 1 + i
                 }
             }))
         }
